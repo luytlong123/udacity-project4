@@ -1,27 +1,91 @@
 import 'source-map-support/register'
-import {APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult} from 'aws-lambda'
-import {UpdateTodoRequest} from '../../requests/UpdateTodoRequest'
-import {updateToDo} from "../../businessLogic/ToDo";
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    // TODO: Update a TODO item with the provided id using values in the "updatedTodo" object
-    console.log("Processing Event ", event);
-    const authorization = event.headers.Authorization;
-    const split = authorization.split(' ');
-    const jwtToken = split[1];
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import * as middy from 'middy'
+import { cors, httpErrorHandler } from 'middy/middlewares'
 
-    const todoId = event.pathParameters.todoId;
-    const updatedTodo: UpdateTodoRequest = JSON.parse(event.body);
+import { updateTodo } from '../../businessLogic/todos'
+import { UpdateTodoRequest } from '../../requests/UpdateTodoRequest'
+import { getUserId } from '../utils'
+import { createLogger } from '../../utils/logger'
 
-    const toDoItem = await updateToDo(updatedTodo, todoId, jwtToken);
+const logger = createLogger("updateTodo")
 
-    return {
-        statusCode: 200,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-        },
+export const handler = middy(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const todoId = event.pathParameters.todoId
+    const updatedTodo: UpdateTodoRequest = JSON.parse(event.body)
+
+    if(!todoId||todoId.trim()===""){
+      return {
+        statusCode: 400,
         body: JSON.stringify({
-            "item": toDoItem
-        }),
+          error: `Invalid todo id`
+        })
+      }
     }
-};
+    if(!updatedTodo.name||updatedTodo.name.trim()==""){
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error : `Todo name is required`
+        })
+      }
+    }
+    if(!updatedTodo.dueDate||updatedTodo.dueDate.trim()==""){
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error : `Todo dueDate is required`
+        })
+      }
+    }
+    if(updatedTodo.done===undefined){
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error : `Todo dueDate is required`
+        })
+      }
+    }
+
+    let userId:string
+    try{
+      userId= getUserId(event);
+    }catch(err){
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          error : `Invalid token`
+        })
+      }
+    }
+    logger.info(`User ${userId} update todo item id ${todoId} ${updatedTodo}`)
+
+
+    try {
+      //update item attachment url
+      await updateTodo(todoId,userId,updatedTodo)
+    } catch (error) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          error:`Fail to update TODO ,error ${error}`
+        })
+      }
+    }
+
+    return{
+      statusCode: 200,
+      body: JSON.stringify({})
+    }
+  }
+)
+
+handler
+  .use(httpErrorHandler())
+  .use(
+    cors({
+      credentials: true
+    })
+  )

@@ -1,28 +1,30 @@
 import 'source-map-support/register'
-//import * as AWS from 'aws-sdk'
-//import * as AWSXRay from 'aws-xray-sdk'
-import {APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler} from 'aws-lambda';
-import {getAllToDo} from "../../businessLogic/ToDo";
 
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import * as middy from 'middy'
+import { cors } from 'middy/middlewares'
 
-//const XAWS = AWSXRay.captureAWS(AWS);
+import { getUserId } from '../utils';
+import { getAllTodos } from '../../businessLogic/todos';
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    // TODO: Get all TODO items for a current user
-    console.log("Processing Event ", event);
-    const authorization = event.headers.Authorization;
-    const split = authorization.split(' ');
-    const jwtToken = split[1];
+// TODO: Get all TODO items for a current user
+export const handler = middy(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    // Write your code here
+    const userId=getUserId(event);
 
-    const toDos = await getAllToDo(jwtToken);
+    const todos =await getAllTodos(userId);
 
     return {
-        statusCode: 200,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-        },
-        body: JSON.stringify({
-            "items": toDos,
-        }),
+      statusCode: 200,
+      body: JSON.stringify({
+        items:todos
+      })
     }
-};
+})
+
+handler.use(
+  cors({
+    credentials: true
+  })
+)

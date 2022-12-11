@@ -1,26 +1,57 @@
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import 'source-map-support/register'
+import * as middy from 'middy'
+import { cors } from 'middy/middlewares'
+import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
+import { getUserId } from '../utils';
+import { createTodo } from '../../businessLogic/todos'
+import { createLogger } from '../../utils/logger'
 
-import {APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult} from 'aws-lambda'
-import {CreateTodoRequest} from '../../requests/CreateTodoRequest';
-import {createToDo} from "../../businessLogic/ToDo";
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    // TODO: Implement creating a new TODO item
-    console.log("Processing Event ", event);
-    const authorization = event.headers.Authorization;
-    const split = authorization.split(' ');
-    const jwtToken = split[1];
+const logger = createLogger("createTodo")
 
-    const newTodo: CreateTodoRequest = JSON.parse(event.body);
-    const toDoItem = await createToDo(newTodo, jwtToken);
-
-    return {
-        statusCode: 201,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-        },
+export const handler = middy(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const newTodo: CreateTodoRequest = JSON.parse(event.body)
+    if(!newTodo.name||newTodo.name.trim()==""){
+      return {
+        statusCode: 400,
         body: JSON.stringify({
-            "item": toDoItem
-        }),
+          error : `Todo name is required`
+        })
+      }
     }
-};
+    if(!newTodo.dueDate||newTodo.dueDate.trim()==""){
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error : `Todo dueDate is required`
+        })
+      }
+    }
+
+    const userId=getUserId(event);
+    logger.info(`User ${userId} create new todo item ${newTodo}`)
+    try {
+      const todoItem =await createTodo(newTodo,userId)
+      return {
+        statusCode: 201,
+        body: JSON.stringify({item:todoItem})
+      }
+    } catch (err) {
+      logger.error(`Fail to create new todo , error ${err}`)
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error : `Fail to create new todo , error ${err}`
+        })
+      }
+    }
+  }
+)
+
+handler.use(
+  cors({
+    credentials: true
+  })
+)
